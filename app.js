@@ -4,7 +4,22 @@ var http = require('http');
 const fs = require('fs');
 const fetch = require('node-fetch');
 //const { start } = require('repl');
- 
+const { Worker } = require('worker_threads')
+
+/*const bcrypt = require('bcrypt');
+const saltRounds = 10;
+const myPlaintextPassword = 's0/\/\P4$$w0rD';
+const someOtherPlaintextPassword = 'not_bacon';*/
+
+var key1 = "4r8949e4j94n46dher546j4n8frtj9rt847";
+var key2 = "jr849jr8t4j98tr4hr49r8jt49e84yj894";
+var key3 = "zr8y49zr84g89r498h4re98h4zr984g984h9er87";
+var key4 = "2e1ger1h2re1h2er13z13hr1z2r1tj31321ht";
+var key5 = "rtj46rt4h68rjh68rtyj68r7y4j68r7ty6j87r6";
+var key6 = "az6z4a6raz4r64zr6a84a6z8r468e464e84vg8e";
+
+var viewDistance = 50000;
+
 var server = http.createServer(function(request, response) {
     console.log((new Date()) + ' Received request for ' + request.url);
     response.writeHead(404);
@@ -17,7 +32,7 @@ server.listen(31095, function() {
 
 var names = [];
 var houses = {};
-houses.nbrHouse = 0;
+//houses.nbrHouse = 0;
 var stepHouse = 0;
 var dateHouse = Date.now();
 var listConnection = {};
@@ -26,6 +41,7 @@ var cargo = {};
 var messages = {};
 var listPlayers = {};
 var listPlayersLite = {};
+var logModerate = {};
 var friends = {};
 var market = {};
 var cults = {};
@@ -36,6 +52,38 @@ var heatmap = {};
 var dateHeatmap = Date.now();
 var towers = {};
 var stations = {};
+
+
+const farming={"farmer" : {value:["food"],bonusPlace:"farm",need:[]},"leatherworker" : {value:["armor"],bonusPlace:"armory",need:["leather"]},"stonemason" : {value:["bricks"],bonusPlace:"stoneworks",need:["stone"]},"woodworker" : {value:["boards"],bonusPlace:"lumbermill",need:["wood"]},"lumberjack" : {value:["wood"],bonusPlace:"sawmill",need:[]},"hunter" : {value:["leather","food"],bonusPlace:"hunting house",need:[]},"stone miner":{value:["stone"],bonusPlace:"mining station",need:[]},"ammo technician":{value:["ammo"],bonusPlace:"armory",need:["metal"]},"craftsman":{value:["gear","screw","toolbox"],bonusPlace:"workshop",need:["copper","metal"]},"metalworker":{value:["copper","metal","gold","gunpowder"],bonusPlace:"furnace",need:["stone","wood"]}}
+
+const ressProd={"wood":1,"food":1,"water":1,"ammo":200, "stone":1,"boards":2,"bricks":2,"leather":2,"armor":3,"copper":5,"metal":4,"gold":100,"gear":125,"screw":150,"toolbox":175,"gunpowder":250}
+
+const jobList = ["farmer","cook","builder","bartender","doctor","farmer","leatherworker","stonemason","woodworker","lumberjack","hunter","stone miner","weapon technician","armor technician","ammo technician","craftsman","metalworker","instructor"]
+
+const houseNeed = {//coter client en découvre un pour chaque level de batiment en plus
+    "stoneworks":{"wood":50,"stone":150},//stonemason
+    "lumbermill":{"wood":150,"stone":50},//woodworker
+    "house":{"boards":50,"bricks":50,"stone":50},
+    "farm":{"boards":250,"bricks":200},//farmer
+    "hunting house":{"boards":200,"bricks":100,"stone":50},
+    "church":{"boards":150,"bricks":200,"stone":1000},
+    "school":{"boards":300,"bricks":200},
+    "weaving":{"boards":200,"bricks":250},
+    "furnace":{"stone":700,"bricks":1200},
+    "sawmill":{"metal":200,"boards":400,"bricks":600},
+    "mining station":{"metal":300,"boards":700,"bricks":200},
+    "bar":{"boards":450,"bricks":300,"copper":600},
+    "restaurant":{"boards":500,"bricks":300,"copper":300},
+    "medical":{"boards":200,"bricks":150,"metal":50,"copper":150},
+    "store":{"boards":500,"stone":350,"metal":200},
+    "water station":{"stone":300,"metal":700,"copper":100},
+    "workshop":{"boards":650,"bricks":500,"metal":250,"copper":170},
+  
+    
+    "factory":{"boards":400,"bricks":300,"metal":800,"copper":600},
+    "barracks":{"boards":1400,"bricks":1500,"metal":300,"copper":150},
+    "armory":{"boards":300,"bricks":800,"metal":700,"copper":300},//leatherworker
+   }
 
 function save(){
     try {
@@ -77,6 +125,10 @@ function save(){
         fs.writeFile('stations.json', JSON.stringify(stations), (err) => {
             if (err) throw err;
         });
+        fs.writeFile('logModerate.json', JSON.stringify(logModerate), (err) => {
+            if (err) throw err;
+        });
+        
     } catch (err) {
         console.error(err);
     }
@@ -121,10 +173,14 @@ function load(){
                                                 fs.readFile('stations.json', (err, data) => {
                                                     if (err) throw err;
                                                     stations = JSON.parse(data);
-                                                    fs.readFile('name.json', (err, data) => {
+                                                    fs.readFile('logModerate.json', (err, data) => {
                                                         if (err) throw err;
-                                                        names = JSON.parse(data);
-                                                        start();
+                                                        logModerate = JSON.parse(data);
+                                                        fs.readFile('name.json', (err, data) => {
+                                                            if (err) throw err;
+                                                            names = JSON.parse(data);
+                                                            start();
+                                                        });
                                                     });
                                                 });
                                             });
@@ -136,20 +192,43 @@ function load(){
                     });
                 });
             });
-            
+
         });
     });
 }
 
+function totalyDeletePlayer(){
+    try {
+        Object.keys(listPlayers).forEach(player => {
+            if(Date.now() > listPlayers[player].lastCo+(60000*60*24*30*1)){
+                delete messages[player];
+                delete friends[player];
+                Object.keys(market).forEach(item => {
+                    if(market[item].id == player)
+                        delete market[item]
+                });
+                Object.keys(cults).forEach(cult => {
+                    if(cults[cult].users[player])
+                        delete cults[cult].users[player]
+                });
+                delete listPlayers[player];
+                delete listPlayersLite[player];
+            }
+        }); 
+    } catch (error) {
+        console.log(error)
+    }
+}
 
 function start(){
+    //var job = ["farmer","cook","builder","bartender","doctor","blacksmith","farmer","leatherworker","stonemason","woodworker","lumberjack","hunter"]
     /*houses = {
-        0:{
+        1:{
             lat:48.8961845,
             lng:2.8115658,
             "refugee":{
                 0:{s:0,//sexe 0 = femme
-                    a:1,//age
+                    a:15,//age
                     l:100,//life
                     e:-1,//enceinte
                     ap:1,//ageprogress
@@ -165,24 +244,43 @@ function start(){
                         t:1,//teacher
                         p:1,//psychologue
                         b:1,//builder
-                    }
+                        f:1,//fighter
+                    },
+                    work:"builder",
                 },
-                1:{s:1,a:1,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:""},
-                2:{s:1,a:15,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:""},
-                3:{s:0,a:14,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:""},
-                4:{s:0,a:18,l:100,e:8,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:""},
-                5:{s:1,a:19,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:""},
+                1:{s:1,a:15,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:"",work:"farmer"},
+                2:{s:1,a:15,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:"",work:"stonemason"},
+                3:{s:0,a:14,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:"",work:"woodworker"},
+                4:{s:0,a:18,l:100,e:8,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:"",work:"lumberjack"},
+                5:{s:1,a:19,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:"",work:"stone miner"},
             },
-            "ress":{"wood":365*5,"food":365*5,"water":365*5,"ammo":10},
+            "queue":[],
+            "users":{},
+            "ress":{"wood":365*5,"food":365*5,"water":365*5,"ammo":10, "stone":0,"boards":0,"bricks":0,"leather":0,"armor":0,"copper":0,"metal":0,"gold":0,"gear":0,"screw":0,"toolbox":0,"gunpowder":0},
+            "prod":{"wood":0,"food":0,"water":0,"ammo":0, "stone":0,"boards":0,"bricks":0,"leather":0,"armor":0,"copper":0,"metal":0,"gold":0,"gear":0,"screw":0,"toolbox":0,"gunpowder":0},
             "place":{
-                "bar":{"progress":100,"build":1},
-                "school":{"progress":0,"build":1},
-                "church":{"progress":30,"build":1},
-                "medical":{"progress":100,"build":1},
-                "restaurant":{"progress":0,"build":0},
+                "lumbermill":{"progress":0,"build":0},//woodworker
+                "stoneworks":{"progress":0,"build":0},//stonemason
+                "house":{"progress":0,"build":0},
+                "farm":{"progress":0,"build":0},//farmer
+                "hunting house":{"progress":0,"build":0},
+                "school":{"progress":0,"build":0},
+                "church":{"progress":0,"build":0},
                 "weaving":{"progress":0,"build":0},
+                "furnace":{"progress":0,"build":0},
+                "sawmill":{"progress":0,"build":0},
+                "mining station":{"progress":0,"build":0},
                 "store":{"progress":0,"build":0},
+                "bar":{"progress":0,"build":0},
+                "restaurant":{"progress":0,"build":0},
+                "medical":{"progress":0,"build":0},
+                "water station":{"progress":0,"build":0},
                 "workshop":{"progress":0,"build":0},
+
+                "factory":{"progress":0,"build":0},
+                "barracks":{"progress":0,"build":0},
+                "armory":{"progress":0,"build":0},//leatherworker
+
             },
             "law":{
                 "workHourByDay":18,
@@ -192,11 +290,13 @@ function start(){
                 "woodByDay":6,
                 "waterByDay":4,//litre
             },
-            "log":{}
-            "cloth":{}
+            "greve":0,
+            "rGreve":1,
+            "log":{},
+            "cloth":{},
             progress:1,
             level:1,
-            id:0,
+            id:1,
             birth:6,
             teacher:0,
             build:0,
@@ -205,15 +305,15 @@ function start(){
             malade:0,
             proprio:-1,
             freeze:-1,
-            {"fortress":{
-            "enemy":{
-                "1":{"id":1,"life":100,"dmg":10,"p":3,"s":0,"n":"eyump vissor"},
+            "fortress":{
+                "enemy":{
+                },
+                "allie":{
+
+                }
             },
-            "allie":{
-                
-            }
-},
         },
+        nbrHouse : 1,
     }*/
     //save();
     setInterval(() => {
@@ -232,13 +332,13 @@ function start(){
                     cargo[date]={id:date,lat:responseJson.data[0].latitude,lng:responseJson.data[0].longitude}
 
                     Object.keys(listConnection).forEach(function(client) {//console.log(listPlayers[player].lat,listPlayers[player].lng,house.lat,house.lng)
-                        if(getDistanceFromLatLonInKm(listConnection[client].lat,listConnection[client].lng,responseJson.data[0].latitude,responseJson.data[0].longitude) < 100){
-                            var message = { 
+                        if(getDistanceFromLatLonInKm(listConnection[client].lat,listConnection[client].lng,responseJson.data[0].latitude,responseJson.data[0].longitude) < viewDistance){
+                            var message = {
                                 app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                                 headings: {"en": 'Air-Drop',"fr": 'Air-Drop'},
                                 contents: {"en": "An air drop falls close to you","fr": "An air drop falls close to you"},
                                 filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":client }, 
+                                    {"field": "tag", "key": "id", "relation": "=", "value":client },
                                     {"operator": "AND"}, {"field": "tag", "key": "cargo", "relation": "=", "value": "true"}
                                 ]
                             };
@@ -251,57 +351,126 @@ function start(){
             }
         }
         }).catch((error) => {console.error(error);});
-        
+        //totalyDeletePlayer();
         save();
-    }, 60000*10);
-    setInterval(() => {
-        if(Date.now() > dateHouse+(60000/houses.nbrHouse)){//dateHouse+(60000/houses.nbrHouse)
-            houseProcess(houses[stepHouse]);
-            dateHouse = Date.now()
-            if(stepHouse < houses.nbrHouse){
-                stepHouse++
-            }else{
-                stepHouse = 0
-            }
-        }
-        if(Date.now() > dateHeatmap+(60000)){
-            dateHeatmap = Date.now()
-            for (let index = 0; index < 100; index++) {
-                if(!heatmap[index]){
-                    //heatmap = {"latitude": 48.8961845, "longitude": 2.8315658,"up":1}
-                    heatmap[index]={
-                        latitude: getRandomArbitrary(-80,80) ,
-                        longitude: getRandomArbitrary(-140,140) ,
-                        up:getRandomInt(0,2),
+    }, 60000*10);//60000
+    setInterval(() => {//console.log(dateHouse+(60000/houses.nbrHouse))
+        try {
+            if(Date.now() > dateHouse+(2000/Object.keys(houses).length)){
+                var dateTest = Date.now();
+                if(houses[Object.keys(houses)[stepHouse]] && houses[Object.keys(houses)[stepHouse]].ress && houses[Object.keys(houses)[stepHouse]].birth > 0){
+                    if(Object.keys(houses[Object.keys(houses)[stepHouse]].fortress.enemy).length <= 0){
+                        runService({"house":houses[Object.keys(houses)[stepHouse]],"houses":houses,"names":names,"listPlayers":listPlayers,"farming":farming,"jobList":jobList,"houseNeed":houseNeed,"ressProd":ressProd,}).then((data)=>{
+                            var usersTemp = Object.assign({}, houses[data.id].users, {})
+                            if(houses[data.id].block != 1)//Pour eviter rollback client
+                                houses[data.id] = data.house;
+                            houses[data.id].block = 0;
+                            houses[data.id].users = usersTemp;
+                            if(data.destroyHouse == 1)
+                                delete houses[data.id];
+                            listPlayers = data.listPlayers;
+                            if(houses[data.id] && data.exportMessage.newFortress){
+                                Object.keys(listConnection).forEach(function(client) {
+                                    if(listConnection[client].connected == true){
+                                        listConnection[client].send(JSON.stringify({"action":"newFortress","house":{
+                                            f : 1,
+                                            lat : data.exportMessage.newFortress.lat,
+                                            lng : data.exportMessage.newFortress.lng,
+                                            id : data.exportMessage.newFortress.id,}}))
+                                    }
+                                })
+                            }
+                            if(houses[data.id] && data.exportMessage.moveRefugee){
+                                houses[data.exportMessage.moveRefugee.houseNear.id].refugee = data.exportMessage.moveRefugee.houseNear.refugee;
+                                Object.keys(listConnection).forEach(function(client) {
+                                    if(listConnection[client] && listConnection[client].connected == true && listConnection[client].lat && listConnection[client].lng && getDistanceFromLatLonInKm(data.exportMessage.moveRefugee.houseNear.lat,data.exportMessage.moveRefugee.houseNear.lng,listConnection[client].lat,listConnection[client].lng) < viewDistance){
+                                        listConnection[client].send(JSON.stringify({"action":"moveRefugee","refugee":{
+                                            sLat:data.exportMessage.moveRefugee.sLat,slng:data.exportMessage.moveRefugee.slng,eLat:data.exportMessage.moveRefugee.eLat,eLng:data.exportMessage.moveRefugee.eLng,dist:data.exportMessage.moveRefugee.dist,byId:data.exportMessage.moveRefugee.byId,toId:data.exportMessage.moveRefugee.toId}}))
+                                        }
+                                })
+                            }
+                            if(houses[data.id] && Object.keys(houses[data.id].users).length > 0){
+                                Object.keys(houses[data.id].users).forEach(function(client) {
+                                    if(listConnection[client] && listConnection[client].connected == true){
+                                        listConnection[client].send(JSON.stringify({"action":"houseViewLite","house":data.objSendable}))
+                                    }
+                                })
+                            }
+                        })
                     }
+                }
+                if(houses[Object.keys(houses)[stepHouse]]){
+                    if(listPlayers[houses[Object.keys(houses)[stepHouse]].proprio]){//perds proprio si un mois sans connect
+                        if(Date.now() > listPlayers[houses[Object.keys(houses)[stepHouse]].proprio].lastCo+(60000*60*24*30*1))
+                            houses[Object.keys(houses)[stepHouse]].proprio = -1
+                    }else if(houses[Object.keys(houses)[stepHouse]].la){//si pas de proprio et 2 mois depuis last action alors destroy
+                        if(Date.now() > houses[Object.keys(houses)[stepHouse]].la+(60000*60*24*30*2))
+                            delete houses[Object.keys(houses)[stepHouse]];
+                    }
+                }
+                //houseProcess(houses[stepHouse]);
+                dateHouse = Date.now()
+                if(stepHouse < Object.keys(houses).length){
+                    stepHouse++
                 }else{
-                    if(heatmap[index].longitude < 180){
-                        heatmap[index].longitude += getRandomArbitrary(0.01,0.02);
-                    }else{
-                        heatmap[index].longitude = -180
-                    }
-                    if(heatmap[index].up == 1){
-                        if(heatmap[index].latitude > -80){
-                            heatmap[index].latitude -= getRandomArbitrary(0.01,0.02)
-                        }else{
-                            heatmap[index].up = 0 
+                    stepHouse = 0
+                }
+                //console.log(Date.now()-dateTest)
+            }
+            if(Date.now() > dateHeatmap+(60000)){
+                dateHeatmap = Date.now()
+                for (let index = 0; index < 100; index++) {
+                    if(!heatmap[index]){
+                        //heatmap = {"latitude": 48.8961845, "longitude": 2.8315658,"up":1}
+                        heatmap[index]={
+                            latitude: getRandomArbitrary(-80,80) ,
+                            longitude: getRandomArbitrary(-140,140) ,
+                            up:getRandomInt(0,2),
                         }
                     }else{
-                        if(heatmap[index].latitude < 80){
-                            heatmap[index].latitude += getRandomArbitrary(0.01,0.02)
+                        if(heatmap[index].longitude < 180){
+                            heatmap[index].longitude += getRandomArbitrary(0.01,0.02);
                         }else{
-                            heatmap[index].up = 1
+                            heatmap[index].longitude = -180
+                        }
+                        if(heatmap[index].up == 1){
+                            if(heatmap[index].latitude > -80){
+                                heatmap[index].latitude -= getRandomArbitrary(0.01,0.02)
+                            }else{
+                                heatmap[index].up = 0
+                            }
+                        }else{
+                            if(heatmap[index].latitude < 80){
+                                heatmap[index].latitude += getRandomArbitrary(0.01,0.02)
+                            }else{
+                                heatmap[index].up = 1
+                            }
                         }
                     }
                 }
+                Object.keys(listConnection).forEach(function(client) {
+                    if(listConnection[client] && listConnection[client].connected == true){
+                        listConnection[client].send(JSON.stringify({"action":"heatmap","heatmap":heatmap}))
+                        }
+                })
             }
-            Object.keys(listConnection).forEach(function(client) {
-                if(listConnection[client] && listConnection[client].connected == true){
-                    listConnection[client].send(JSON.stringify({"action":"heatmap","heatmap":heatmap}))
-                    }
-            })
+            
+        } catch (error) {
+            console.log(error)
         }
     }, 10*1);
+}
+
+function runService(workerData) {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker('./workerHouse-min.js', { workerData });
+      worker.on('message', resolve);
+      worker.on('error', reject);
+      worker.on('exit', (code) => {
+        if (code !== 0)
+          reject(new Error(`Worker stopped with exit code ${code}`));
+      })
+    })
 }
 
 
@@ -315,396 +484,6 @@ function getRandomInt(min, max) {
   function getRandomArbitrary(min, max) {
     return Math.random() * (max - min) + min;
   }
-
-function totalyDeletePlayer(player){
-    if(Date.now() > listPlayers[player].lastCo+(60000*60*24*30*2)){
-        delete messages[player];
-        delete friends[player];
-        market.forEach(item => {
-            if(item.id == player)
-                delete item
-        });
-        cults.forEach(cult => {
-            if(cult.users[player])
-                delete cult.users[player]
-        });
-        delete listPlayers[player];
-        delete listPlayersLite[player];
-    }
-}
-
-
-function houseProcess(house){
-        //console.log(houses[house],Object.keys(houses[house]["refugee"]).length)
-        var hommes = [];
-        var femmes = [];
-        var teacher = 0;
-        var build = 0;
-        var medic = 0;
-        var psycho = 0;
-        var malade = 0;
-        var femmeEnceinte = 0;
-        Object.keys(house["refugee"]).forEach(refugee => {
-            
-            //AJOUT DES RESSOURCES PAR RAPPORT A L AGE ET TEMP DE TRAVAIL 
-            if(house["refugee"][refugee].a >= house["law"]["ageForWork"] && house["refugee"][refugee].a < 70){
-                house["refugee"][refugee].job.h = Math.round(house["refugee"][refugee].job.h)
-                house["refugee"][refugee].job.m = Math.round(house["refugee"][refugee].job.m)
-                house["refugee"][refugee].job.t = Math.round(house["refugee"][refugee].job.t)
-                house["refugee"][refugee].job.p = Math.round(house["refugee"][refugee].job.p)
-                house["refugee"][refugee].job.b = Math.round(house["refugee"][refugee].job.b)
-
-                if(house["ress"].wood < 5000*(1+(house["place"]["store"].progress/100))) house["ress"].wood += Math.round(house["law"]["workHourByDay"]*(1+(house["refugee"][refugee].job.h/1000)))
-                if(house["ress"].food < 5000*(1+(house["place"]["store"].progress/100))) house["ress"].food += Math.round(house["law"]["workHourByDay"]*(1+(house["refugee"][refugee].job.h/1000)))
-                if(house["ress"].water < 5000*(1+(house["place"]["store"].progress/100))) house["ress"].water += Math.round(house["law"]["workHourByDay"]*(1+(house["refugee"][refugee].job.h/1000)))
-                if(house["ress"].ammo < 300*(1+(house["place"]["store"].progress/100))) house["ress"].ammo += Math.round((house["law"]["workHourByDay"]*(1+(house["refugee"][refugee].job.h/1000)))/10)
-                if(house["ress"].wood > 100){
-                    if(house["place"]["school"].progress < 100 && house["place"]["school"].build == 1){
-                        house["place"]["school"].progress += 0.1*(1+house.build);
-                        house["place"]["school"].progress = (Math.round(house["place"]["school"].progress*1000)/1000)
-                    }
-                    if(house["place"]["medical"].progress < 100 && house["place"]["medical"].build == 1){
-                        house["place"]["medical"].progress += 0.1*(1+house.build);
-                        house["place"]["medical"].progress = (Math.round(house["place"]["medical"].progress*1000)/1000)
-                    }
-                    if(house["place"]["church"].progress < 100 && house["place"]["church"].build == 1){
-                        house["place"]["church"].progress += 0.1*(1+house.build);
-                        house["place"]["church"].progress = (Math.round(house["place"]["church"].progress*1000)/1000)
-                    }
-                    if(house["place"]["bar"].progress < 100 && house["place"]["bar"].build == 1){
-                        house["place"]["bar"].progress += 0.1*(1+house.build);
-                        house["place"]["bar"].progress = (Math.round(house["place"]["bar"].progress*1000)/1000)
-                    }
-                    if(house["place"]["restaurant"].progress < 100 && house["place"]["restaurant"].build == 1){
-                        house["place"]["restaurant"].progress += 0.1*(1+house.build);
-                        house["place"]["restaurant"].progress = (Math.round(house["place"]["restaurant"].progress*1000)/1000)
-                    }
-                    if(house["place"]["weaving"].progress < 100 && house["place"]["weaving"].build == 1){
-                        house["place"]["weaving"].progress += 0.1*(1+house.build);
-                        house["place"]["weaving"].progress = (Math.round(house["place"]["weaving"].progress*1000)/1000)
-                    }
-                    if(house["place"]["store"].progress < 100 && house["place"]["store"].build == 1){
-                        house["place"]["store"].progress += 0.1*(1+house.build);
-                        house["place"]["store"].progress = (Math.round(house["place"]["store"].progress*1000)/1000)
-                    }
-                    if(house["place"]["workshop"].progress < 100 && house["place"]["workshop"].build == 1){
-                        house["place"]["workshop"].progress += 0.1*(1+house.build);
-                        house["place"]["workshop"].progress = (Math.round(house["place"]["workshop"].progress*1000)/1000)
-                    }
-                    if(house["place"]["weaving"].progress >= 100){
-                        if(Object.keys(house.cloth).length < house.level*2){
-                            if(getRandomInt(0,1000) == 1) house.cloth[getRandomInt(0,100000)] = {"name":"Hat","type":"vêtements","value":getRandomInt(30,100),"poids":0.5,"equiped":0,"label":"Protection","repair":["Cloth","Skin"],"icon":"hat-fedora","durability":100}
-                            if(getRandomInt(0,1000) == 1) house.cloth[getRandomInt(0,100000)] = {"name":"Tshirt","type":"vêtements","value":getRandomInt(30,100),"poids":getRandomInt(1,3),"equiped":0,"label":"Protection","repair":["Cloth","Skin"],"icon":"tshirt-v-outline","durability":100}
-                            if(getRandomInt(0,1000) == 1) house.cloth[getRandomInt(0,100000)] = {"name":"Sweat","type":"vêtements","value":getRandomInt(30,100),"poids":0.5,"equiped":0,"label":"Protection","repair":["Cloth","Skin"],"icon":"tshirt-crew","durability":100}
-                            if(getRandomInt(0,1000) == 1) house.cloth[getRandomInt(0,100000)] = {"name":"Gloves","type":"vêtements","value":getRandomInt(30,100),"poids":0.5,"equiped":0,"label":"Protection","repair":["Cloth","Skin"],"icon":"mixed-martial-arts","durability":100}
-                            if(getRandomInt(0,1000) == 1) house.cloth[getRandomInt(0,100000)] = {"name":"Pants","type":"vêtements","value":getRandomInt(30,100),"poids":getRandomInt(2,3),"equiped":0,"label":"Protection","repair":["Cloth","Skin"],"icon":"gentoo","durability":100}
-                            if(getRandomInt(0,1000) == 1) house.cloth[getRandomInt(0,100000)] = {"name":"Shooes","type":"vêtements","value":getRandomInt(30,100),"poids":getRandomInt(1,3),"equiped":0,"label":"Protection","repair":["Cloth","Skin"],"icon":"shoe-formal","durability":100}
-                        }
-                    }
-                    
-                    if(house["ress"].wood > 200) house["ress"].wood -= 1*house.level;
-                    house.progress += (0.1*(1+house.build))/(house.level+1)
-                    house.progress = (Math.floor(house.progress*100000)/100000)
-                    if(house.progress > 100){
-                        house.level += 1;//bloquer côter client nombre d'enfant par rapport au level et l'afficher (4/5 place)
-                        house.progress = 0;
-                    }
-                }      
-                teacher += house["refugee"][refugee].job.t;
-                build += house["refugee"][refugee].job.b;
-                medic += house["refugee"][refugee].job.m;
-                psycho += house["refugee"][refugee].job.p;
-            }else if(house["refugee"][refugee].a < house["law"]["ageForWork"] && house["place"]["school"].progress >= 100){//SCHOOL
-                if(house["refugee"][refugee].job.h < 100) house["refugee"][refugee].job.h += getRandomArbitrary(0,(house["refugee"][refugee].s == 0 ? 0.02 : 0.04))*(1+house.teacher)
-                if(house["refugee"][refugee].job.m < 100) house["refugee"][refugee].job.m += getRandomArbitrary(0,0.04)*(1+house.teacher)
-                if(house["refugee"][refugee].job.t < 100) house["refugee"][refugee].job.t += getRandomArbitrary(0,(house["refugee"][refugee].s == 0 ? 0.04 : 0.02))*(1+house.teacher)
-                if(house["refugee"][refugee].job.p < 100) house["refugee"][refugee].job.p += getRandomArbitrary(0,(house["refugee"][refugee].s == 0 ? 0.04 : 0.02))*(1+house.teacher)
-                if(house["refugee"][refugee].job.b < 100) house["refugee"][refugee].job.b += getRandomArbitrary(0,(house["refugee"][refugee].s == 0 ? 0.02 : 0.04))*(1+house.teacher)
-            }
-            //HAPINESS (declenche fugue, déprime)
-            house["refugee"][refugee].h = 0
-            house["refugee"][refugee].h -= house["law"]["workHourByDay"]/(1+house.psycho)
-            house["refugee"][refugee].h -= (18-house["law"]["ageForReproduce"])/(1+house.psycho)
-            house["refugee"][refugee].h += house["law"]["ageForWork"]*(1+house.psycho)
-            house["refugee"][refugee].h += (house["law"]["foodByDay"]*2)*(1+house.psycho)
-            house["refugee"][refugee].h += (house["law"]["woodByDay"]*2)*(1+house.psycho)
-            house["refugee"][refugee].h += (house["law"]["waterByDay"]*2)*(1+house.psycho)
-            house["refugee"][refugee].h += (house["place"]["school"].progress/20)*(1+house.psycho)
-            house["refugee"][refugee].h += (house["place"]["medical"].progress/20)*(1+house.psycho)
-            house["refugee"][refugee].h += (house["place"]["church"].progress/20)*(1+house.psycho)
-            house["refugee"][refugee].h += (house["place"]["bar"].progress/10)*(1+house.psycho)
-            
-            
-            
-            house["refugee"][refugee].h += ((house["refugee"][refugee].job.h/25)+(house["refugee"][refugee].job.m/25)+(house["refugee"][refugee].job.t/25)+(house["refugee"][refugee].job.p/25)+(house["refugee"][refugee].job.b/25))*(1+house.psycho)
-            if(house["refugee"][refugee].h > 100) {house["refugee"][refugee].h = 100}else if(house["refugee"][refugee].h < 0){house["refugee"][refugee].h = 0}else{house["refugee"][refugee].h = Math.floor(house["refugee"][refugee].h)}
-            
-            /*if(house["refugee"][refugee].h < 50 && getRandomArbitrary(0,2000) < getRandomArbitrary(0,1) && Object.keys(house.refugee).length > 5 && house["refugee"][refugee].a < house["law"]["ageForWork"]){
-                house[Object.keys(house["log"]).length] = {t:"Gone",c1:house["refugee"][refugee].n,d:Date.now()}
-                delete house["refugee"][refugee];
-                var message = { 
-                    app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                    headings: {"en": 'Refuge'},
-                    contents: {"en": "One of your unfortunate refugees has left your refuge."},
-                    filters: [
-                        {"field": "tag", "key": "id", "relation": "=", "value":house.proprio }, 
-                        {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
-                    ]
-                };
-                sendNotification(message);
-            }else */if(getRandomArbitrary(0,Object.keys(houses).length) < getRandomArbitrary(0,1) && ((Object.keys(house.refugee).length > (house.level*3)-2 || house["refugee"][refugee].h < 50 || house["refugee"][refugee].l < 50 || getRandomArbitrary(0,10) > getRandomArbitrary(0,100) ) )){
-                var housesNear = []
-                Object.keys(houses).forEach(houseNow => {
-                    if(getDistanceFromLatLonInKm(houses[houseNow].lat,houses[houseNow].lng,house.lat,house.lng) < 30 && house.id != houses[houseNow].id && Object.keys(houses[houseNow].refugee).length < (house.level*3)-2)
-                        housesNear.push(houses[houseNow])
-                });
-                if(housesNear.length > 0){
-                    houseNear = housesNear[getRandomInt(0,housesNear.length)]
-                    //console.log(Object.keys(houseNear.refugee).length,Object.keys(house.refugee).length)
-                    houseNear.refugee[refugee] = Object.assign({}, house["refugee"][refugee], {})
-                    delete house["refugee"][refugee]
-                    //console.log(Object.keys(houseNear.refugee).length,Object.keys(house.refugee).length)
-                    var dist = getDistanceFromLatLonInKm(house.lat,house.lng,houseNear.lat,houseNear.lng)
-                    Object.keys(listConnection).forEach(function(client) {
-                        if(listConnection[client] && listConnection[client].connected == true && listConnection[client].lat && listConnection[client].lng && getDistanceFromLatLonInKm(houseNear.lat,houseNear.lng,listConnection[client].lat,listConnection[client].lng) < 1000){
-                            listConnection[client].send(JSON.stringify({"action":"moveRefugee","refugee":{
-                                sLat:house.lat,slng:house.lng,eLat:houseNear.lat,eLng:houseNear.lng,dist:dist,byId:house.id,toId:houseNear.id}}))
-                            }
-                    })
-                }
-            }else{//console.log(Object.keys(house.refugee).length,(house.level*10)-2);
-                //maladie par rapport au level house medic
-                if(getRandomArbitrary(0,4000) < getRandomArbitrary(0,1+(house.malade*20)) && Object.keys(house["refugee"][refugee]) > 3){
-                    house[Object.keys(house["log"]).length] = {t:"Disease",c1:house["refugee"][refugee].n,d:Date.now()}
-                    house["refugee"][refugee].v += 1;
-                }
-                if(house["refugee"][refugee].v > 0 && Object.keys(house["refugee"][refugee]) > 3){
-                    house["refugee"][refugee].l -= 0.1
-                    house["refugee"][refugee].v -= (house["place"]["medical"].progress/1000)*(1+house.medic)
-                    malade += 1
-                }
-                //FREEZE
-                house.freeze += getRandomInt(5,-5)
-                if(house.freeze > 0){ house.freeze = 0}else if(house.freeze < -50){house.freeze = -50}
-                //EVENEMENT CATASTROPHE
-                if(getRandomArbitrary(0,5000) < getRandomArbitrary(0,1) && Object.keys(house.refugee).length > 5){
-                    var enemies = {}
-                    var nbrEnemy = 0;
-                    var totalEnemy = getRandomInt(10,75);
-                    for (let index = 0; index < totalEnemy; index++) {
-                        nbrEnemy++
-                        enemies[nbrEnemy] = {"id":nbrEnemy,"life":100,"dmg":getRandomInt(2,22),"p":getRandomInt(1,11),"s":getRandomInt(0,2),"n":names[getRandomInt(0,names.length)].name}
-                    }
-                    house.fortress = {
-                        "enemy":enemies,
-                        "allie":{}
-                    }
-                    Object.keys(listConnection).forEach(function(client) {
-                        if(listConnection[client].connected == true){
-                            listConnection[client].send(JSON.stringify({"action":"newFortress","house":{
-                                f : 1,
-                                lat : house.lat,
-                                lng : house.lng,
-                                id : house.id,}}))
-                            }
-                    })
-                    Object.keys(listPlayers).forEach(player => {//console.log(listPlayers[player].lat,listPlayers[player].lng,house.lat,house.lng)
-                        if(getDistanceFromLatLonInKm(listPlayers[player].lat,listPlayers[player].lng,house.lat,house.lng) < 100){
-                            var message = { 
-                                app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                                headings: {"en": 'Refuge',"fr": 'Refuge'},
-                                contents: {"en": "A close refuge is raided by enemies","fr": 'Refuge'},
-                                filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":player }, 
-                                    {"operator": "AND"}, {"field": "tag", "key": "raid", "relation": "=", "value": "true"}
-                                ]
-                            };
-                            sendNotification(message);
-                        }
-                        totalyDeletePlayer(player);
-                    });
-                }
-                if(getRandomArbitrary(0,3000) < getRandomArbitrary(0,1)){
-                    house["place"]["school"].progress -=  getRandomInt(5,75);
-                    if(house["place"]["school"].progress < 0 ) house["place"]["school"].progress = 0
-                    house["place"]["medical"].progress -=  getRandomInt(5,75);
-                    if(house["place"]["medical"].progress < 0 ) house["place"]["medical"].progress = 0
-                    house["place"]["church"].progress -=  getRandomInt(5,75);
-                    if(house["place"]["church"].progress < 0 ) house["place"]["church"].progress = 0
-                    house["place"]["bar"].progress -=  getRandomInt(5,75);
-                    if(house["place"]["bar"].progress < 0 ) house["place"]["bar"].progress = 0
-                    house["place"]["store"].progress -=  getRandomInt(5,75);
-                    if(house["place"]["store"].progress < 0 ) house["place"]["store"].progress = 0
-                    house["place"]["workshop"].progress -=  getRandomInt(5,75);
-                    if(house["place"]["workshop"].progress < 0 ) house["place"]["workshop"].progress = 0
-                    house["log"][Object.keys(house["log"]).length] = {t:"The refuge caught fire",c1:house["refugee"][refugee].n,c2:house["refugee"][refugee].a,d:Date.now()}
-                    delete house["refugee"][refugee];
-                    var message = { 
-                        app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                        headings: {"en": 'Refuge',"fr": 'Refuge'},
-                        contents: {"en": "Your buildings were damaged and a refugee died in the flames.","fr": "Your buildings were damaged and a refugee died in the flames."},
-                        filters: [
-                            {"field": "tag", "key": "id", "relation": "=", "value":house.proprio }, 
-                            {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
-                        ]
-                    };
-                    sendNotification(message);
-                }else if(getRandomArbitrary(0,3000) < getRandomArbitrary(0,1)){
-                    var wood = getRandomInt(50,150);
-                    var food = getRandomInt(50,150);
-                    var water = getRandomInt(50,150);
-                    var ammo = getRandomInt(50,150);
-                    house["ress"]["wood"] -= wood
-                    if(house["ress"]["wood"] < 0 ) house["ress"]["wood"] = 0
-                    house["ress"]["food"] -= food
-                    if(house["ress"]["food"] < 0 ) house["ress"]["food"] = 0
-                    house["ress"]["water"] -= water
-                    if(house["ress"]["water"] < 0 ) house["ress"]["water"] = 0
-                    house["ress"]["ammo"] -= ammo
-                    if(house["ress"]["ammo"] < 0 ) house["ress"]["ammo"] = 0
-                    house["log"][Object.keys(house["log"]).length] = {t:"The refuge was attacked by robbers",c1:house["refugee"][refugee].n,c2:house["refugee"][refugee].a,c3:wood,c4:food,c5:water,c6:ammo,d:Date.now()}
-                    delete house["refugee"][refugee];
-                    var message = { 
-                        app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                        headings: {"en": 'Refuge',"fr": 'Refuge'},
-                        contents: {"en": "The refuge was attacked by robbers and a refugee died in the fight.","fr": "The refuge was attacked by robbers and a refugee died in the fight."},
-                        filters: [
-                            {"field": "tag", "key": "id", "relation": "=", "value":house.proprio }, 
-                            {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
-                        ]
-                    };
-                    sendNotification(message);
-                }
-                
-                if(house["refugee"][refugee]){
-                    //accouchement
-                    if(house["refugee"][refugee].s == 0 && house["refugee"][refugee].e > 0) {
-                        house["refugee"][refugee].e -= 1
-                        if(house["refugee"][refugee].e <= 0) {
-                            var name = names[getRandomInt(0,names.length)].name;
-                            house["log"][Object.keys(house["log"]).length] = {t:"Birth",c1:house["refugee"][refugee].n.name,c2:house["refugee"][refugee].lf,c3:name.name,d:Date.now()}
-                            house["refugee"][house.birth] = {s:getRandomInt(0,2),a:1,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:name,m:house["refugee"][refugee].n,f:house["refugee"][refugee].lf,lf:""}
-                            house["refugee"][refugee].e = -1
-                            house.birth+=1
-                            var message = { 
-                                app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                                headings: {"en": 'Refuge',"fr": 'Refuge'},
-                                contents: {"en": "A baby was born in your refuge.","fr": "A baby was born in your refuge."},
-                                filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":house.proprio }, 
-                                    {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
-                                ]
-                            };
-                            sendNotification(message);
-                        }
-                    }else if (house["refugee"][refugee].e > 0){
-                        femmeEnceinte += 1
-                    }
-                    //couple
-                    if(house["refugee"][refugee].s == 1 && house["refugee"][refugee].a > house["law"]["ageForReproduce"]) hommes.push(house["refugee"][refugee])
-                    if(house["refugee"][refugee].s == 0 && house["refugee"][refugee].a > house["law"]["ageForReproduce"] && house["refugee"][refugee].a < 50 && house["refugee"][refugee].e < 0) femmes.push(house["refugee"][refugee])
-                    //age by day
-                    if(house["refugee"][refugee].ap < 365){
-                        house["refugee"][refugee].ap += 1
-                    }else{
-                        house["refugee"][refugee].ap = 1;
-                        house["refugee"][refugee].a += 1;
-                    }
-                    //utilisation de ressource et perte ou gain de vie
-                    if(house["ress"]["wood"] > 0){house["ress"]["wood"] -= (house["refugee"][refugee].a < house["law"]["ageForWork"] ? 1 : house["law"]["woodByDay"]);if(house["refugee"][refugee].l <= 100){ house["refugee"][refugee].l -= (house["refugee"][refugee].a >= house["law"]["ageForWork"] ? Math.floor((Math.abs(house.freeze)/10)-house["law"]["woodByDay"]+(1+house.medic)) : 0)}else{house["refugee"][refugee].l = 99}
-                    }else{house["ress"]["wood"] = 0;if(house["refugee"][refugee].l > 0)house["refugee"][refugee].l -= getRandomInt(1,(Math.abs(house.freeze)))}
-
-                    if(house["ress"]["food"] > 0){house["ress"]["food"] -= (house["refugee"][refugee].a < house["law"]["ageForWork"] ? 1 : house["law"]["foodByDay"]);if(house["refugee"][refugee].l <= 100){ house["refugee"][refugee].l -= (house["refugee"][refugee].a >= house["law"]["ageForWork"] ? Math.floor(2-house["law"]["foodByDay"]+(1+house.medic)) : 0)}else{house["refugee"][refugee].l = 99}
-                    }else{house["ress"]["food"] = 0;if(house["refugee"][refugee].l > 0)house["refugee"][refugee].l -= getRandomInt(1,3)}
-                    
-
-                    if(house["ress"]["water"] > 0){house["ress"]["water"] -= (house["refugee"][refugee].a < house["law"]["ageForWork"] ? 1 : house["law"]["waterByDay"]);if(house["refugee"][refugee].l <= 100) {house["refugee"][refugee].l -= (house["refugee"][refugee].a >= house["law"]["ageForWork"] ? Math.floor(3-house["law"]["waterByDay"]+(1+house.medic)) : 0)}else{house["refugee"][refugee].l = 99}
-                    }else{house["ress"]["water"] = 0;if(house["refugee"][refugee].l > 0) house["refugee"][refugee].l -= getRandomInt(1,3)}
-                    
-                    
-                    //mort
-                    if(house["refugee"][refugee].a > 100 || house["refugee"][refugee].l <= 1){
-                        if(house["refugee"][refugee].a > 100) {
-                            if(getRandomInt(0,100) == 1) {
-                                house["log"][Object.keys(house["log"]).length] = {t:"Death of old age",c1:house["refugee"][refugee].n,c2:house["refugee"][refugee].a,d:Date.now()}
-                                delete house["refugee"][refugee];
-                                var message = { 
-                                    app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                                    headings: {"en": 'Refuge',"fr": 'Refuge'},
-                                    contents: {"en": "A refugee is death of old age in your refuge.","fr": "A refugee is death of old age in your refuge."},
-                                    filters: [
-                                        {"field": "tag", "key": "id", "relation": "=", "value":house.proprio }, 
-                                        {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
-                                    ]
-                                };
-                                sendNotification(message);
-                            }
-                        }else{
-                            house["log"][Object.keys(house["log"]).length] = {t:"Death",c1:house["refugee"][refugee].n,c2:house["refugee"][refugee].a,d:Date.now()}
-                            delete house["refugee"][refugee];
-                            var message = { 
-                                app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
-                                headings: {"en": 'Refuge',"fr": 'Refuge'},
-                                contents: {"en": "A refugee died from a lack of resources in your refuge.","fr": "A refugee died from a lack of resources in your refuge."},
-                                filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":house.proprio }, 
-                                    {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
-                                ]
-                            };
-                            sendNotification(message);
-                        }
-                    }
-                }
-            }
-        });
-
-        //Besoin de trois repas par jour, 6 kilo de bois en moyenne et 4 litre d'eau par jour pour être en bonne forme
-        //7 heure de travail par jour serait un bon conpromis entre liberté et survie
-        //l'école obligatoire jusqu'a 18 ans est conseillé
-        //les enfants qui ne travail pas ne consome qu'une ressource par jour
-
-        house.teacher = teacher/10000;
-        house.build = build/10000;
-        house.medic = medic/10000;
-        house.psycho = psycho/10000;
-        house.malade = malade;
-        if(hommes.length > 0 && femmes.length > 0){
-            if(Object.keys(house["refugee"]).length + femmeEnceinte < house.level*3){//capacité max du refuge
-                femmes.forEach(femme => {
-                    if(getRandomInt(0,20) == 1) {femme.e = 270;femme.lf = hommes[getRandomInt(0,hommes.length)].n }
-                });
-            }
-        }
-        if(Object.keys(house["log"]).length > 50 ){//console.log(house["log"][Object.keys(house["log"]).shift()])
-            delete house["log"][Object.keys(house["log"]).shift()]
-        }
-
-        if(listPlayers[house.proprio]){
-            if(Date.now() > listPlayers[house.proprio].lastCo+(60000*60*24*30*1)){
-                house.proprio = -1
-                Object.keys(listConnection).forEach(function(client) {
-                    if(listConnection[client].connected == true){
-                        listConnection[client].send(JSON.stringify({"action":"newFortress","house":{
-                            f : 1,
-                            lat : house.lat,
-                            lng : house.lng,
-                            id : house.id,}}))
-                    }
-                })
-            }
-        }else if(house.proprio != -1){
-            house.proprio = -1
-            Object.keys(listConnection).forEach(function(client) {
-                if(listConnection[client].connected == true){
-                    listConnection[client].send(JSON.stringify({"action":"newFortress","house":{
-                        f : 1,
-                        lat : house.lat,
-                        lng : house.lng,
-                        id : house.id,}}))
-                }
-            })
-        }
-}
 
 function lawUpdate(body){
     houses[body.id]["law"][body.type] = parseInt(body.text);
@@ -731,46 +510,96 @@ function buildPlace(body){
     return {"action":"buildPlace","house":houses[body.id]}
 }
 
+function deleteQueue(house,place){
+    var unique = true;
+    house.queue.forEach((queue,index) => {
+        if(queue == place && unique == true){
+            house.queue.splice(index, 1);
+            unique = false;
+        }
+    });
+    return {"action":"houseView","house":house}
+}
+
+function addQueue(house,place){
+    house.queue.push(place)
+    return {"action":"houseView","house":house}
+}
+
+function changeWork(house,idRefugee,job){
+    house["refugee"][idRefugee].work = job;
+    return {"action":"houseView","house":house}
+}
+
+function kickRefugee(house,idRefugee){
+    house.greve+= 200;
+    delete house["refugee"][idRefugee];
+    return {"action":"houseView","house":house}
+}
+
+
+
 function addHouse(body){
     var near = false
     Object.keys(houses).forEach(house => {
-        if(getDistanceFromLatLonInKm(houses[house].lat, houses[house].lng, body.lat, body.lng) < 2){
+        if(getDistanceFromLatLonInKm(houses[house].lat, houses[house].lng, body.lat, body.lng) < 1*(5+Object.keys(houses[house].refugee).length)){
             near = true
         }
     });
     if(near == false){
-        houses.nbrHouse++
+        //houses.nbrHouse++
+        var id = Date.now();
         var house={
+            "la":Date.now(),
             "refugee":{},
-            "ress":{"wood":0,"food":0,"water":0,"ammo":0},
+            "queue":[],
+            "users":{},
+            "ress":{"wood":0,"food":0,"water":0, "stone":0,"boards":0,"bricks":0,"leather":0,"armor":0,"copper":0,"metal":0,"gold":0,"gear":0,"screw":0,"toolbox":0,"gunpowder":0,"ammo":0},
+            "prod":{"wood":0,"food":0,"water":0, "stone":0,"boards":0,"bricks":0,"leather":0,"armor":0,"copper":0,"metal":0,"gold":0,"gear":0,"screw":0,"toolbox":0,"gunpowder":0,"ammo":0},
             "place":{
-                "bar":{"progress":0,"build":0},
+                "lumbermill":{"progress":0,"build":0},//woodworker
+                "stoneworks":{"progress":0,"build":0},//stonemason
+                "house":{"progress":0,"build":0},
+                "farm":{"progress":0,"build":0},//farmer
+                "hunting house":{"progress":0,"build":0},
                 "school":{"progress":0,"build":0},
                 "church":{"progress":0,"build":0},
-                "medical":{"progress":0,"build":0},
-                "restaurant":{"progress":0,"build":0},
                 "weaving":{"progress":0,"build":0},
+                "furnace":{"progress":0,"build":0},
+                "sawmill":{"progress":0,"build":0},
+                "mining station":{"progress":0,"build":0},
                 "store":{"progress":0,"build":0},
+                "bar":{"progress":0,"build":0},
+                "restaurant":{"progress":0,"build":0},
+                "medical":{"progress":0,"build":0},
+                "water station":{"progress":0,"build":0},
                 "workshop":{"progress":0,"build":0},
+
+                "factory":{"progress":0,"build":0},
+                "barracks":{"progress":0,"build":0},
+                "armory":{"progress":0,"build":0},//leatherworker
+
             },
             "law":{
-                "workHourByDay":7,
-                "ageForWork":18,
-                "ageForReproduce":21,
+                "workHourByDay":10,
+                "ageForWork":17,
+                "ageForReproduce":17,
                 "foodByDay":4,
-                "woodByDay":8,
-                "waterByDay":5,
+                "woodByDay":6,
+                "waterByDay":4,
             },
             "fortress":{
                 "enemy":{},
                 "allie":{},
             },
+            "greve":0,
+            "rGreve":1,
             "log":{},
             "cloth":{},
-            progress:1,
-            level:1,
-            id:houses.nbrHouse,
-            birth:6,
+            /*progress:1,
+            level:1,*/
+            id:id,
+            birth:0,
             teacher:0,
             build:0,
             medic:0,
@@ -781,10 +610,10 @@ function addHouse(body){
             lat:body.lat,
             lng:body.lng,
         };
-        houses[houses.nbrHouse] = house
-        return {action:"addHouse",house:{lat:body.lat,lng:body.lng,id:houses.nbrHouse}};
+        houses[id] = house
+        return {action:"addHouse",house:{lat:body.lat,lng:body.lng,id:id,nbr:0}};
     }else{
-        
+
     return {action:"addHouse",impossible:true};
     }
 }
@@ -807,7 +636,7 @@ function addTower(body){
         towers[towers.nbrTower] = tower
         return {action:"addTower",tower:{lat:body.lat,lng:body.lng,id:towers.nbrTower}};
     }else{
-        
+
     return {action:"addTower",impossible:true};
     }
 }
@@ -830,7 +659,7 @@ function addCarStation(body){
         stations[stations.nbrStation] = station
         return {action:"addCarStation",station:{lat:body.lat,lng:body.lng,id:stations.nbrStation}};
     }else{
-        
+
     return {action:"addCarStation",impossible:true};
     }
 }
@@ -840,14 +669,14 @@ function addCarStation(body){
 function addRefugee(body){
     var name = names[getRandomInt(0,names.length)].name;
     houses[body.id]["log"][Object.keys(houses[body.id]["log"]).length] = {t:"Birth",c1:body.mother,c2:body.father,c3:name,d:Date.now()}
-    houses[body.id]["refugee"][houses[body.id].birth] = {s:getRandomInt(0,2),a:1,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:name,m:body.mother,f:body.father,lf:""};
+    houses[body.id]["refugee"][Date.now()] = {s:getRandomInt(0,2),a:1,l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:name,m:body.mother,f:body.father,lf:"",work:"farmer",p:getRandomInt(1,41)};
     houses[body.id].birth+=1
-    var message = { 
+    var message = {
         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
         headings: {"en": 'Refuge',"fr": 'Refuge'},
         contents: {"en": "A player gives birth in your refuge.","fr": "A player gives birth in your refuge."},
         filters: [
-            {"field": "tag", "key": "id", "relation": "=", "value":houses[body.id].proprio }, 
+            {"field": "tag", "key": "id", "relation": "=", "value":houses[body.id].proprio },
             {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
         ]
     };
@@ -855,25 +684,52 @@ function addRefugee(body){
 }
 
 function addRefugeeAdulte(body){
+    var distance = 1000;
+    var id = undefined;
+    Object.keys(houses).forEach(house => {
+        if(Object.keys(houses[house]["refugee"]).length < ((2+houses[house]["place"].house.build)*2)){
+            var dist = getDistanceFromLatLonInKm(body.lat,body.lng,houses[house].lat,houses[house].lng)
+            if(dist < distance){
+                distance = dist;
+                id = house;
+            }
+        }
+    });
     //houses[body.id]["log"][Object.keys(houses[body.id]["log"]).length] = {t:"Join",c1:body.mother,c2:body.father,c3:name,d:Date.now()}
-    if(Object.keys(houses[body.id]["refugee"]).length < houses[body.id].level*10){
-        houses[body.id]["refugee"][houses[body.id].birth] = {s:getRandomInt(0,2),a:getRandomInt(12,40),l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:""};
+    if(id && houses[id]){
+        houses[id].block = 1;
+        houses[id]["refugee"][Date.now()] = {s:getRandomInt(0,2),a:getRandomInt(12,40),l:100,e:-1,ap:1,h:100,v:0,job:{h:1,m:1,t:1,p:1,b:1,f:1},n:names[getRandomInt(0,names.length)].name,m:names[getRandomInt(0,names.length)].name,f:names[getRandomInt(0,names.length)].name,lf:"",work:"farmer",p:getRandomInt(1,41)};
+        houses[id].birth+=1;
     }
-    houses[body.id].birth+=1
-    /*var message = { 
+    /*var message = {
         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
         headings: {"en": 'Refuge',"fr": 'Refuge'},
         contents: {"en": "A refugee gives birth in your refuge.","fr": "A player gives birth in your refuge."},
         filters: [
-            {"field": "tag", "key": "id", "relation": "=", "value":houses[body.id].proprio }, 
+            {"field": "tag", "key": "id", "relation": "=", "value":houses[body.id].proprio },
             {"operator": "AND"}, {"field": "tag", "key": "myRefuge", "relation": "=", "value": "true"}
         ]
     };
     sendNotification(message);*/
 }
 
-function addRessource(body){houses[body.id]["ress"][body.type == "combustible" ? "wood" : body.type == "nourriture" ? "food" : body.type == "boisson" ? "water" : "ammo"] += body.value;return {action:body.action,house:houseView(body)};}
-function subRessource(body){body.type == "ammo" ? houses[body.id]["ress"][body.type] -= 1 : houses[body.id]["ress"][body.type] -= 7;return {type:body.type,action:body.action,house:houseView(body)};}//bloquer coter client si < 0
+function addRessource(body){
+    if(body.nbr){
+        houses[body.id]["ress"][body.type] += body.nbr;
+    }else{
+        houses[body.id]["ress"][body.type == "combustible" ? "wood" : body.type == "nourriture" ? "food" : body.type == "boisson" ? "water" : "ammo"] += body.value;
+    }
+    return {action:body.action,house:houseView(body)};
+}
+function subRessource(body){
+    if(body.type =="leather" || body.type=="metal" || body.type=="gold" || body.type=="gear" || body.type=="screw" || body.type=="gunpowder" || body.type=="toolbox" || body.type=="ammo"){
+        houses[body.id]["ress"][body.type] -= body.nbr
+    }else{
+        houses[body.id]["ress"][body.type] -= 7;
+    }
+    //body.type == "ammo" ? houses[body.id]["ress"][body.type] -= 1 : houses[body.id]["ress"][body.type] -= 7;
+    return {type:body.type,nbr:body.nbr,action:body.action,house:houseView(body)};
+}//bloquer coter client si < 0
 
 function messageList(id){
     if(!messages[id])
@@ -888,12 +744,12 @@ function friendsCreate(id){
 }
 
 function sendMessage(body){
-    var message = { 
+    var message = {
         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
         headings: {"en": 'Message received by '+listPlayers[body.byId].name,"fr": 'Message received by '+listPlayers[body.byId].name},
         contents: {"en": body.t2,"fr": body.t2},
         filters: [
-            {"field": "tag", "key": "id", "relation": "=", "value":body.id }, 
+            {"field": "tag", "key": "id", "relation": "=", "value":body.id },
             {"operator": "AND"}, {"field": "tag", "key": "message", "relation": "=", "value": "true"}
         ]
     };
@@ -936,33 +792,36 @@ function houseView(body){
                         f : 0,
                         lat : houses[body.id].lat,
                         lng : houses[body.id].lng,
-                        id : houses[body.id].id,}}))
+                        id : houses[body.id].id,
+                        nbr : Object.keys(houses[body.id].refugee).length
+                    }}))
                 }
             })
         }
         listConnection[body.idPlayer].send(JSON.stringify({"action":"newProprio"}))
     }
-    
+
     return {"action":"houseView","house":houses[body.id]}
 }
 
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     var R = 6371; // Radius of the earth in km
     var dLat = deg2rad(lat2-lat1);  // deg2rad below
-    var dLon = deg2rad(lon2-lon1); 
-    var a = 
+    var dLon = deg2rad(lon2-lon1);
+    var a =
       Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
       Math.sin(dLon/2) * Math.sin(dLon/2)
-      ; 
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+      ;
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     var d = R * c; // Distance in km
     return d;
 }
 
-function deg2rad(deg) {return deg * (Math.PI/180)} 
+function deg2rad(deg) {return deg * (Math.PI/180)}
 
 function playerReturn(body){
+    /*{cl:JSON.parse(message.utf8Data)["profil"]["class"],n:JSON.parse(message.utf8Data)["profil"]["name"],r:JSON.parse(message.utf8Data)["profil"]["reput"]+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,p:JSON.parse(message.utf8Data)["profil"]["portrait"],id:JSON.parse(message.utf8Data)["idPlayer"],s:JSON.parse(message.utf8Data)["profil"]["stats"]["sexe"],c:1,lastCo:Date.now(),k:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k,m:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m,lat:JSON.parse(message.utf8Data)["latitude"],lng:JSON.parse(message.utf8Data)["longitude"]}*/
     var player={};
     var playerNear={};
     player.lat=body.latitude;
@@ -982,18 +841,18 @@ wsServer = new WebSocketServer({
     httpServer: server,
     autoAcceptConnections: false
 });
- 
+
 function originIsAllowed(origin) {
   return true;
 }
- 
+
 wsServer.on('request', function(request) {//console.log('request')
     if (!originIsAllowed(request.origin)) {
       request.reject();
       console.log((new Date()) + ' Connection from origin ' + request.origin + ' rejected.');
       return;
     }
-    
+
     var connection = request.accept('echo-protocol', request.origin);
     connection.on('message', function(message) {
         if (message.type === 'utf8') {
@@ -1001,17 +860,23 @@ wsServer.on('request', function(request) {//console.log('request')
                 //console.log('Received Message: ' + message.utf8Data);
                 if(JSON.parse(message.utf8Data)["action"] == "move"){
                     var data = JSON.stringify(playerReturn(JSON.parse(message.utf8Data)))
-                    listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["latitude"]
-                    listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["longitude"]
+                    if(listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]]){
+                        listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["latitude"]
+                        listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["longitude"]
+                    }
+                    if(listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]]){
+                        listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["latitude"]
+                        listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["longitude"]
+                    }
                     if(listConnection[JSON.parse(message.utf8Data)["idPlayer"]]){
                         listConnection[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["latitude"]
                         listConnection[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["longitude"]
                     }
-                    
+
                     Object.keys(listConnection).forEach(function(client) {
                         if(listConnection[client].connected == false)
                             delete listConnection[connection.idSearch];
-                        if(listConnection[client].idSearch != connection.idSearch && listConnection[client].connected == true && getDistanceFromLatLonInKm(JSON.parse(message.utf8Data)["latitude"],JSON.parse(message.utf8Data)["longitude"],listConnection[client].lat,listConnection[client].lng) < 1000)
+                        if(listConnection[client].idSearch != connection.idSearch && listConnection[client].connected == true && getDistanceFromLatLonInKm(JSON.parse(message.utf8Data)["latitude"],JSON.parse(message.utf8Data)["longitude"],listConnection[client].lat,listConnection[client].lng) < viewDistance)
                             listConnection[client].send(data);
                     });
                 }else if(JSON.parse(message.utf8Data)["action"] == "fire"){
@@ -1065,8 +930,10 @@ wsServer.on('request', function(request) {//console.log('request')
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]] = JSON.parse(message.utf8Data)["profil"];
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote = vote
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].cult = cult
-                    listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["latitude"]
-                    listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["longitude"]
+                    listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["profil"]["latitude"]
+                    listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["profil"]["longitude"]
+                    listConnection[JSON.parse(message.utf8Data)["idPlayer"]].lat = JSON.parse(message.utf8Data)["profil"]["latitude"]
+                    listConnection[JSON.parse(message.utf8Data)["idPlayer"]].lng = JSON.parse(message.utf8Data)["profil"]["longitude"]
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k = kicked
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m = moderator
                     if(cult){
@@ -1080,13 +947,38 @@ wsServer.on('request', function(request) {//console.log('request')
                             cult = cults[cult.id]
                         }
                     }
+                    //console.log(JSON.parse(message.utf8Data))
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].invit = invit
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lastCo = Date.now()
-                    listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]] = {cl:JSON.parse(message.utf8Data)["profil"]["class"],n:JSON.parse(message.utf8Data)["profil"]["name"],r:JSON.parse(message.utf8Data)["profil"]["reput"]+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,p:JSON.parse(message.utf8Data)["profil"]["portrait"],id:JSON.parse(message.utf8Data)["idPlayer"],s:JSON.parse(message.utf8Data)["profil"]["stats"]["sexe"],/*v:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,*/c:1,lastCo:Date.now(),k:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k,m:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m};
-                    
+                    listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]] = {cl:JSON.parse(message.utf8Data)["profil"]["class"],n:JSON.parse(message.utf8Data)["profil"]["name"],r:JSON.parse(message.utf8Data)["profil"]["reput"]+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,p:JSON.parse(message.utf8Data)["profil"]["portrait"],id:JSON.parse(message.utf8Data)["idPlayer"],s:JSON.parse(message.utf8Data)["profil"]["stats"]["sexe"],/*v:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,*/c:1,lastCo:Date.now(),k:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k,m:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m,lat:JSON.parse(message.utf8Data)["profil"]["latitude"],lng:JSON.parse(message.utf8Data)["profil"]["longitude"]};
+                    //console.log(listPlayersLite)
                     connection.send(JSON.stringify({"action":"houseList",list:houseList(),towers:towers,stations:stations,messages:messageList(JSON.parse(message.utf8Data)["idPlayer"]),listPlayersLite:listPlayersLite,cult:cult,friends:friendsCreate(JSON.parse(message.utf8Data)["idPlayer"]),kicked:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k}))
+                    var data = JSON.stringify({"action":"move","lat":JSON.parse(message.utf8Data)["profil"]["latitude"],"lng":JSON.parse(message.utf8Data)["profil"]["longitude"],"sexe":listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].stats.sexe,"rest":0,"p":listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].portrait,"name":listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].name,"id":JSON.parse(message.utf8Data)["idPlayer"]})
+                    Object.keys(listConnection).forEach(function(client) {
+                        if(listConnection[client].idSearch != connection.idSearch && listConnection[client].connected == true && getDistanceFromLatLonInKm(JSON.parse(message.utf8Data)["profil"]["latitude"],JSON.parse(message.utf8Data)["profil"]["longitude"],listConnection[client].lat,listConnection[client].lng) < viewDistance)
+                            listConnection[client].send(data);
+                    });
                 }else if(JSON.parse(message.utf8Data)["action"] == "houseView"){
+                    houses[JSON.parse(message.utf8Data).id].users[JSON.parse(message.utf8Data).idPlayer] = JSON.parse(message.utf8Data).idPlayer
                     connection.send(JSON.stringify(houseView(JSON.parse(message.utf8Data))))
+                }else if(JSON.parse(message.utf8Data)["action"] == "houseExit"){
+                    delete houses[JSON.parse(message.utf8Data).id].users[JSON.parse(message.utf8Data).idPlayer]
+                }else if(JSON.parse(message.utf8Data)["action"] == "deleteQueue"){
+                    houses[JSON.parse(message.utf8Data).id].la = Date.now();
+                    houses[JSON.parse(message.utf8Data).id].block = 1;
+                    connection.send(JSON.stringify(deleteQueue(houses[JSON.parse(message.utf8Data).id],JSON.parse(message.utf8Data).type)))
+                }else if(JSON.parse(message.utf8Data)["action"] == "addQueue"){
+                    houses[JSON.parse(message.utf8Data).id].la = Date.now();
+                    houses[JSON.parse(message.utf8Data).id].block = 1;
+                    connection.send(JSON.stringify(addQueue(houses[JSON.parse(message.utf8Data).id],JSON.parse(message.utf8Data).type)))
+                }else if(JSON.parse(message.utf8Data)["action"] == "changeWork"){
+                    houses[JSON.parse(message.utf8Data).id].la = Date.now();
+                    houses[JSON.parse(message.utf8Data).id].block = 1;
+                    connection.send(JSON.stringify(changeWork(houses[JSON.parse(message.utf8Data).id],JSON.parse(message.utf8Data).idRefugee,JSON.parse(message.utf8Data).type)))
+                }else if(JSON.parse(message.utf8Data)["action"] == "kickRefugee"){
+                    houses[JSON.parse(message.utf8Data).id].la = Date.now();
+                    houses[JSON.parse(message.utf8Data).id].block = 1;
+                    connection.send(JSON.stringify(kickRefugee(houses[JSON.parse(message.utf8Data).id],JSON.parse(message.utf8Data).idRefugee)))
                 }else if(JSON.parse(message.utf8Data)["action"] == "addHouse"){
                     var house = addHouse(JSON.parse(message.utf8Data));
                     if(house.impossible){
@@ -1117,8 +1009,13 @@ wsServer.on('request', function(request) {//console.log('request')
                 }else if(JSON.parse(message.utf8Data)["action"] == "addRefugee"){
                     connection.send(JSON.stringify(addRefugee(JSON.parse(message.utf8Data))))
                 }else if(JSON.parse(message.utf8Data)["action"] == "addRessource"){
+                    houses[JSON.parse(message.utf8Data).id].la = Date.now();
+                    houses[JSON.parse(message.utf8Data).id].block = 1;
+                    houses[JSON.parse(message.utf8Data).id].users[JSON.parse(message.utf8Data).idPlayer] = JSON.parse(message.utf8Data).idPlayer
                     connection.send(JSON.stringify(addRessource(JSON.parse(message.utf8Data))))
                 }else if(JSON.parse(message.utf8Data)["action"] == "subRessource"){
+                    houses[JSON.parse(message.utf8Data).id].la = Date.now();
+                    houses[JSON.parse(message.utf8Data).id].block = 1;
                     connection.send(JSON.stringify(subRessource(JSON.parse(message.utf8Data))))
                 }else if(JSON.parse(message.utf8Data)["action"] == "giveitem"){
                     if(listConnection[JSON.parse(message.utf8Data)["idPlayer"]] && listConnection[JSON.parse(message.utf8Data)["idPlayer"]].connected == true)
@@ -1188,12 +1085,12 @@ wsServer.on('request', function(request) {//console.log('request')
                         listConnection[JSON.parse(message.utf8Data)["idPlayer"]].send(JSON.stringify({"action":"addFriend",friends:friendsCreate(JSON.parse(message.utf8Data)["idPlayer"])}))
                     if(listConnection[JSON.parse(message.utf8Data)["idOrigin"]] && listConnection[JSON.parse(message.utf8Data)["idOrigin"]].connected == true)
                         listConnection[JSON.parse(message.utf8Data)["idOrigin"]].send(JSON.stringify({"action":"addFriend",friends:friendsCreate(JSON.parse(message.utf8Data)["idOrigin"])}))
-                    var message = { 
+                    var message = {
                         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                         headings: {"en": 'Friends',"fr": 'Friends'},
                         contents: {"en": listPlayersLite[JSON.parse(message.utf8Data)["idOrigin"]].n+" sent to you a friend invitation","fr": listPlayersLite[JSON.parse(message.utf8Data)["idOrigin"]].n+" sent to you a friend invitation"},
                         filters: [
-                            {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] }, 
+                            {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] },
                             {"operator": "AND"}, {"field": "tag", "key": "friends", "relation": "=", "value": "true"}
                         ]
                     };
@@ -1211,14 +1108,14 @@ wsServer.on('request', function(request) {//console.log('request')
                     var date = Date.now();
                     market[date] = {id:JSON.parse(message.utf8Data)["id"],item:JSON.parse(message.utf8Data)["item"],nbr:JSON.parse(message.utf8Data)["nbr"],price:JSON.parse(message.utf8Data)["price"]}
                     connection.send(JSON.stringify({"action":"sendMarket","market":market}))
-                    
+
                     if(JSON.parse(message.utf8Data)["item"].value > 80){
-                        var message = { 
+                        var message = {
                             app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                             headings: {"en": 'Market',"fr": 'Market'},
                             contents: {"en": "A legendary "+JSON.parse(message.utf8Data)["item"].name+" has just been deposited at the market for "+JSON.parse(message.utf8Data)["price"]+" $.","fr": "A legendary "+JSON.parse(message.utf8Data)["item"].name+" has just been deposited at the market for "+JSON.parse(message.utf8Data)["price"]+" $."},
                             filters: [
-                                {"field": "tag", "key": "market", "relation": "=", "value":true }, 
+                                {"field": "tag", "key": "market", "relation": "=", "value":true },
                             ]
                         };
                         sendNotification(message);
@@ -1229,12 +1126,12 @@ wsServer.on('request', function(request) {//console.log('request')
                     if(market[JSON.parse(message.utf8Data)["key"]])
                         market[JSON.parse(message.utf8Data)["key"]].buy = 1
                     connection.send(JSON.stringify({"action":"listMarket","market":market}))
-                    var message = { 
+                    var message = {
                         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                         headings: {"en": 'Market',"fr": 'Market'},
                         contents: {"en": "You sell an item "+market[JSON.parse(message.utf8Data)["key"]].name,"fr": "You sell an item "+market[JSON.parse(message.utf8Data)["key"]].name},
                         filters: [
-                            {"field": "tag", "key": "id", "relation": "=", "value":market[JSON.parse(message.utf8Data)["key"]].id }, 
+                            {"field": "tag", "key": "id", "relation": "=", "value":market[JSON.parse(message.utf8Data)["key"]].id },
                             {"operator": "AND"}, {"field": "tag", "key": "market", "relation": "=", "value": "true"}
                         ]
                     };
@@ -1249,6 +1146,7 @@ wsServer.on('request', function(request) {//console.log('request')
                         delete houses[JSON.parse(message.utf8Data)["idRaid"]].fortress.allie[JSON.parse(message.utf8Data)["idPlayer"]]
                     //connection.send(JSON.stringify({"action":"listMarket","market":market}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "actionRaid"){
+                    houses[JSON.parse(message.utf8Data)["house"].id].block = 1;
                     houses[JSON.parse(message.utf8Data)["house"].id] = JSON.parse(message.utf8Data)["house"]
                     if(Object.keys(houses[JSON.parse(message.utf8Data)["house"].id].fortress.enemy).length <= 0){
                         Object.keys(houses[JSON.parse(message.utf8Data)["house"].id].fortress.allie).forEach(allie => {
@@ -1302,19 +1200,22 @@ wsServer.on('request', function(request) {//console.log('request')
                 }else if(JSON.parse(message.utf8Data)["action"] == "deleteCult"){
                     var cult = cults[JSON.parse(message.utf8Data)["id"]];
                     if(cult){
+                        logModerate[Date.now()] = JSON.parse(message.utf8Data)["idPlayer"]+" destroy guild "+cult.name
                         Object.keys(cult.users).forEach(user => {
-                            listConnection[user].send(JSON.stringify({"action":"deleteCult"}))
+                            if(listConnection[user] && listConnection[user].connected == true)
+                                listConnection[user].send(JSON.stringify({"action":"quitCult"}))
+                            //listConnection[user].send(JSON.stringify({"action":"deleteCult"}))
                         });
-                        delete cult;
+                        delete cults[JSON.parse(message.utf8Data)["id"]];
                     }
                 }else if(JSON.parse(message.utf8Data)["action"] == "invitCult"){
                     var cult = cults[JSON.parse(message.utf8Data)["id"]];
-                    var message = { 
+                    var message = {
                         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                         headings: {"en": 'Cult',"fr": 'Cult'},
                         contents: {"en": "You were invited in cult : "+cult.name,"fr": "You were invited in cult : "+cult.name},
                         filters: [
-                            {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] }, 
+                            {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] },
                             {"operator": "AND"}, {"field": "tag", "key": "cult", "relation": "=", "value": "true"}
                         ]
                     };
@@ -1340,12 +1241,12 @@ wsServer.on('request', function(request) {//console.log('request')
                             }
                         connection.send(JSON.stringify({"action":"joinCult","cult":cult}))
                         Object.keys(cult.users).forEach(user => {
-                            var message = { 
+                            var message = {
                                 app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                                 headings: {"en": 'Cult',"fr": 'Cult'},
                                 contents: {"en": "A new member joins the cult. Say welcome to "+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].name,"fr": "A new member joins the cult. Say welcome to "+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].name},
                                 filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id}, 
+                                    {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id},
                                     {"operator": "AND"}, {"field": "tag", "key": "cult", "relation": "=", "value": "true"}
                                 ]
                             };
@@ -1366,12 +1267,12 @@ wsServer.on('request', function(request) {//console.log('request')
                     if(cult){
                         cult.messages[Date.now()] = {"t1":body.t1,p:body.p,"t2":body.t2,id:body.id,byId:body.byId,toP:listPlayers[body.byId].portrait,toS:listPlayers[body.byId].stats.sexe,toN:listPlayers[body.byId].name,s:body.s,date:Date.now()}
                         Object.keys(cult.users).forEach(user => {
-                            var message = { 
+                            var message = {
                                 app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                                 headings: {"en": 'Cult Message received by '+body.t1,"fr": 'Cult Message received by '+body.t1},
                                 contents: {"en": body.t2,"fr": body.t2},
                                 filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id}, 
+                                    {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id},
                                     {"operator": "AND"}, {"field": "tag", "key": "cultMessage", "relation": "=", "value": "true"}
                                 ]
                             };
@@ -1414,12 +1315,12 @@ wsServer.on('request', function(request) {//console.log('request')
                         cult.users[JSON.parse(message.utf8Data)["idPlayer"]].role += 1
                     if(cult){
                         connection.send(JSON.stringify({"action":"upgradeRank","cult":cult}))
-                        var message = { 
+                        var message = {
                             app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                             headings: {"en": 'Cult',"fr": 'Cult'},
                             contents: {"en": "You have been promoted to the rank of your cult","fr": "You have been promoted to the rank of your cult"},
                             filters: [
-                                {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] }, 
+                                {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] },
                                 {"operator": "AND"}, {"field": "tag", "key": "cult", "relation": "=", "value": "true"}
                             ]
                         };
@@ -1433,12 +1334,12 @@ wsServer.on('request', function(request) {//console.log('request')
                         listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].cult = undefined
                         if(listConnection[JSON.parse(message.utf8Data)["idPlayer"]] && listConnection[JSON.parse(message.utf8Data)["idPlayer"]].connected == true)
                             listConnection[JSON.parse(message.utf8Data)["idPlayer"]].send(JSON.stringify({"action":"kickCult","cult":undefined}))
-                        var message = { 
+                        var message = {
                             app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                             headings: {"en": 'Cult',"fr": 'Cult'},
                             contents: {"en": "You've been ejected from your cult","fr": "You've been ejected from your cult"},
                             filters: [
-                                {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] }, 
+                                {"field": "tag", "key": "id", "relation": "=", "value":JSON.parse(message.utf8Data)["idPlayer"] },
                                 {"operator": "AND"}, {"field": "tag", "key": "cult", "relation": "=", "value": "true"}
                             ]
                         };
@@ -1456,12 +1357,12 @@ wsServer.on('request', function(request) {//console.log('request')
                     }
                     connection.send(JSON.stringify({"action":"quitCult"}))
                     Object.keys(cult.users).forEach(user => {
-                        var message = { 
+                        var message = {
                             app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                             headings: {"en": 'Cult',"fr": 'Cult'},
                             contents: {"en": listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].name+" leaves the cult.","fr": listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].name+" leaves the cult."},
                             filters: [
-                                {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id }, 
+                                {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id },
                                 {"operator": "AND"}, {"field": "tag", "key": "cult", "relation": "=", "value": "true"}
                             ]
                         };
@@ -1508,12 +1409,12 @@ wsServer.on('request', function(request) {//console.log('request')
                         cult.name = JSON.parse(message.utf8Data).text
                         connection.send(JSON.stringify({"action":"cultRefresh","cult":cults[JSON.parse(message.utf8Data)["id"]]}))
                         Object.keys(cult.users).forEach(user => {
-                            var message = { 
+                            var message = {
                                 app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                                 headings: {"en": 'Cult',"fr": 'Cult'},
                                 contents: {"en": "The name of your cult changes to "+JSON.parse(message.utf8Data).text,"fr": "The name of your cult changes to "+JSON.parse(message.utf8Data).text},
                                 filters: [
-                                    {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id }, 
+                                    {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id },
                                     {"operator": "AND"}, {"field": "tag", "key": "tag", "key": "cult", "relation": "=", "value": "true"}
                                 ]
                             };
@@ -1539,6 +1440,7 @@ wsServer.on('request', function(request) {//console.log('request')
                         cults[listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].cult.id].users[JSON.parse(message.utf8Data)["idPlayer"]].k = true
                     if(listConnection[JSON.parse(message.utf8Data)["idPlayer"]] && listConnection[JSON.parse(message.utf8Data)["idPlayer"]].connected == true)
                         listConnection[JSON.parse(message.utf8Data)["idPlayer"]].send(JSON.stringify({"action":"kickModeration"}))
+                    logModerate[Date.now()] = JSON.parse(message.utf8Data)["idOrigin"]+" kick "+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].name
                 }else if(JSON.parse(message.utf8Data)["action"] == "unkickModeration"){//A FAIRE UNE MODERATION UNKICK BAN
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k = undefined
                     if(listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].cult && cults[listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].cult.id].users[JSON.parse(message.utf8Data)["idPlayer"]])
@@ -1546,9 +1448,9 @@ wsServer.on('request', function(request) {//console.log('request')
                     if(listConnection[JSON.parse(message.utf8Data)["idPlayer"]] && listConnection[JSON.parse(message.utf8Data)["idPlayer"]].connected == true)
                         listConnection[JSON.parse(message.utf8Data)["idPlayer"]].send(JSON.stringify({"action":"unkickModeration"}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "forumsList"){
-                    connection.send(JSON.stringify({"action":"forumsList","forums":forumsLite[JSON.parse(message.utf8Data)["type"]],type:JSON.parse(message.utf8Data)["type"]}))   
+                    connection.send(JSON.stringify({"action":"forumsList","forums":forumsLite[JSON.parse(message.utf8Data)["type"]],type:JSON.parse(message.utf8Data)["type"]}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "getTopic"){
-                    connection.send(JSON.stringify({"action":"getTopic","topic":forums[JSON.parse(message.utf8Data)["type"]][JSON.parse(message.utf8Data)["id"]]}))   
+                    connection.send(JSON.stringify({"action":"getTopic","topic":forums[JSON.parse(message.utf8Data)["type"]][JSON.parse(message.utf8Data)["id"]]}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "addForums"){
                     var date = Date.now();
                     var body = JSON.parse(message.utf8Data);
@@ -1560,7 +1462,7 @@ wsServer.on('request', function(request) {//console.log('request')
                     var body = JSON.parse(message.utf8Data);
                     forumsLite[body.type][body.id].n++;
                     forums[body.type][body.id].answer[date] = {idP:body.idP,t:body.t,c:body.c,p:body.p,s:body.s,name:body.name}
-                    connection.send(JSON.stringify({"action":"getTopic","topic":forums[JSON.parse(message.utf8Data)["type"]][JSON.parse(message.utf8Data)["id"]]}))   
+                    connection.send(JSON.stringify({"action":"getTopic","topic":forums[JSON.parse(message.utf8Data)["type"]][JSON.parse(message.utf8Data)["id"]]}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "deleteForums"){
                     var date = Date.now();
                     var body = JSON.parse(message.utf8Data);
@@ -1578,12 +1480,12 @@ wsServer.on('request', function(request) {//console.log('request')
                         listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]].r += JSON.parse(message.utf8Data)["vote"];
                     }
                     connection.send(JSON.stringify({"action":"listPlayersRefresh","listPlayersLite":listPlayersLite}))
-                    /*var message = { 
+                    /*var message = {
                         app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
                         headings: {"en": 'Cult'},
                         contents: {"en": "The name of your cult changes to "+JSON.parse(message.utf8Data).text},
                         filters: [
-                            {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id }, 
+                            {"field": "tag", "key": "id", "relation": "=", "value":cult.users[user].id },
                             {"operator": "AND"}, {"field": "tag", "key": "tag", "key": "cult", "relation": "=", "value": "true"}
                         ]
                     };
@@ -1603,6 +1505,7 @@ wsServer.on('request', function(request) {//console.log('request')
                     })
                 }else if(JSON.parse(message.utf8Data)["action"] == "listPlayersRefresh"){
                     var cult;
+                    var lastco;
                     var invit;
                     var latitude;
                     var longitude;
@@ -1625,6 +1528,8 @@ wsServer.on('request', function(request) {//console.log('request')
                         kicked = listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k
                     if(listPlayers[JSON.parse(message.utf8Data)["idPlayer"]] && listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m)
                         moderator = listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m
+                    if(listPlayers[JSON.parse(message.utf8Data)["idPlayer"]] && listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lastCo)
+                        lastco = listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].lastCo
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]] = JSON.parse(message.utf8Data)["profil"];
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].cult = cult
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote = vote
@@ -1633,33 +1538,56 @@ wsServer.on('request', function(request) {//console.log('request')
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k = kicked
                     listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m = moderator
                     //listPlayers[JSON.parse(message.utf8Data)["idPlayer"]] = JSON.parse(message.utf8Data)["profil"]
-                    listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]] = {cl:JSON.parse(message.utf8Data)["profil"]["class"],n:JSON.parse(message.utf8Data)["profil"]["name"],r:JSON.parse(message.utf8Data)["profil"]["reput"]+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,p:JSON.parse(message.utf8Data)["profil"]["portrait"],id:JSON.parse(message.utf8Data)["idPlayer"],s:JSON.parse(message.utf8Data)["profil"]["stats"]["sexe"],/*v:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,*/c:1,lastCo:Date.now(),k:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k,m:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m};
+                    listPlayersLite[JSON.parse(message.utf8Data)["idPlayer"]] = {cl:JSON.parse(message.utf8Data)["profil"]["class"],n:JSON.parse(message.utf8Data)["profil"]["name"],r:JSON.parse(message.utf8Data)["profil"]["reput"]+listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,p:JSON.parse(message.utf8Data)["profil"]["portrait"],id:JSON.parse(message.utf8Data)["idPlayer"],s:JSON.parse(message.utf8Data)["profil"]["stats"]["sexe"],/*v:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].vote,*/c:1,lastCo:lastco,k:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].k,m:listPlayers[JSON.parse(message.utf8Data)["idPlayer"]].m,lat:latitude,lng:longitude};
                     connection.send(JSON.stringify({"action":"listPlayersRefresh","listPlayersLite":listPlayersLite}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "friendsRefresh"){
                     connection.send(JSON.stringify({"action":"friendsRefresh","friends":friends[JSON.parse(message.utf8Data)["idPlayer"]]}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "messagesRefresh"){
                     connection.send(JSON.stringify({"action":"messagesRefresh","messages":messages[JSON.parse(message.utf8Data)["idPlayer"]]}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "houseRefresh"){
+                    /*const size = new TextEncoder().encode(JSON.stringify(houses[JSON.parse(message.utf8Data)["id"]])).length
+                    const kiloBytes = size / 1024;
+                    const megaBytes = kiloBytes / 1024;
+                    console.log(size);*/
                     connection.send(JSON.stringify({"action":"houseRefresh","house":houses[JSON.parse(message.utf8Data)["id"]]}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "marketRefresh"){
                     connection.send(JSON.stringify({"action":"marketRefresh","market":market}))
                 }else if(JSON.parse(message.utf8Data)["action"] == "cultRefresh"){
                     connection.send(JSON.stringify({"action":"cultRefresh","cult":cults[JSON.parse(message.utf8Data)["id"]]}))
+                }else if(JSON.parse(message.utf8Data)["action"] == "backgroundApp"){
+                    Object.keys(houses).forEach(function(house) {
+                        if(houses[house] && houses[house].users && houses[house].users[connection.idPlayer])
+                            delete houses[house].users[connection.idPlayer]
+                    });
+                    Object.keys(listConnection).forEach(function(client) {
+                        if(listConnection[client].idSearch != connection.idSearch && listConnection[client].connected == true)
+                            listConnection[client].send(JSON.stringify({"action":"discoUser",id:connection.idPlayer}));
+                    })
+                    delete listConnection[connection.idSearch];
+                    if(listPlayersLite[connection.idSearch])
+                        listPlayersLite[connection.idSearch].c = 0;
+                    delete connection;
                 }
                 
-                
+
+
             } catch (error) {
                 errors[Date.now()] = {"error":error};
                 console.log("error : ",error)
             }
             //connection.sendUTF(JSON.stringify(playerReturn(JSON.parse(message.utf8Data))));
+
         }
         else if (message.type === 'binary') {
             console.log('Received Binary Message of ' + message.binaryData.length + ' bytes');
             connection.sendBytes(message.binaryData);
         }
     });
-    connection.on('close', function(reasonCode, description) {
+    connection.on('close', function(reasonCode, description) {//console.log(reasonCode, description)
+        Object.keys(houses).forEach(function(house) {
+            if(houses[house] && houses[house].users && houses[house].users[connection.idPlayer])
+                delete houses[house].users[connection.idPlayer]
+        });
         Object.keys(listConnection).forEach(function(client) {
             if(listConnection[client].idSearch != connection.idSearch && listConnection[client].connected == true)
                 listConnection[client].send(JSON.stringify({"action":"discoUser",id:connection.idPlayer}));
@@ -1668,6 +1596,7 @@ wsServer.on('request', function(request) {//console.log('request')
         delete listConnection[connection.idSearch];
         if(listPlayersLite[connection.idSearch])
             listPlayersLite[connection.idSearch].c = 0;
+        delete connection;
     });
 });
 
@@ -1679,7 +1608,7 @@ var sendNotification = function(data) {
       "Content-Type": "application/json; charset=utf-8",
       "Authorization": "Basic NjQ4MTdjZjQtMTNkNS00MjM2LWE2N2YtYjg3M2E2MTU0NzQ2"
     };
-    
+
     var options = {
       host: "onesignal.com",
       port: 443,
@@ -1687,28 +1616,28 @@ var sendNotification = function(data) {
       method: "POST",
       headers: headers
     };
-    
+
     var https = require('https');
-    var req = https.request(options, function(res) {  
+    var req = https.request(options, function(res) {
       res.on('data', function(data) {
         //console.log("Response:");
         //console.log(JSON.parse(data));
       });
     });
-    
+
     req.on('error', function(e) {
       console.log("ERROR:");
       console.log(e);
     });
-    
+
     req.write(JSON.stringify(data));
     req.end();
   };
-  
-  var message = { 
+
+  var message = {
     app_id: "5dc2b6c6-0a28-483b-b7a4-10cdeb9b2489",
     contents: {"en": "Server Restarted"},
     included_segments: ["All"]
   };
-  
+
   //sendNotification(message);
